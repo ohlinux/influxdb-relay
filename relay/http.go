@@ -203,8 +203,6 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var wg sync.WaitGroup
 	wg.Add(len(h.backends))
 
-	var responses = make(chan *responseData, len(h.backends))
-
 	for _, b := range h.backends {
 		b := b
 		go func() {
@@ -216,44 +214,18 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				if resp.StatusCode/100 == 5 {
 					log.Printf("5xx response for relay %q backend %q: %v", h.Name(), b.name, resp.StatusCode)
 				}
-				responses <- resp
 			}
 		}()
 	}
 
 	go func() {
 		wg.Wait()
-		close(responses)
 		putBuf(outBuf)
 	}()
 
-	var errResponse *responseData
-
-	for resp := range responses {
-		switch resp.StatusCode / 100 {
-		case 2:
-			w.WriteHeader(http.StatusNoContent)
-			return
-
-		case 4:
-			// user error
-			resp.Write(w)
-			return
-
-		default:
-			// hold on to one of the responses to return back to the client
-			errResponse = resp
-		}
-	}
-
-	// no successful writes
-	if errResponse == nil {
-		// failed to make any valid request...
-		jsonError(w, http.StatusServiceUnavailable, "unable to write points")
-		return
-	}
-
-	errResponse.Write(w)
+	(&responseData{
+		StatusCode: 204,
+	}).Write(w)
 }
 
 type responseData struct {
