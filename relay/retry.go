@@ -3,7 +3,6 @@ package relay
 import (
 	"bytes"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -19,8 +18,6 @@ type Operation func() error
 // until success or timeout of the previous operation.
 // There is no delay between attempts of different operations.
 type retryBuffer struct {
-	buffering int32
-
 	initialInterval time.Duration
 	multiplier      time.Duration
 	maxInterval     time.Duration
@@ -48,16 +45,6 @@ func newRetryBuffer(size, batch int, max time.Duration, p poster) *retryBuffer {
 }
 
 func (r *retryBuffer) post(buf []byte, query string, auth string) (*responseData, error) {
-	if atomic.LoadInt32(&r.buffering) == 0 {
-		resp, err := r.p.post(buf, query, auth)
-		// TODO A 5xx caused by the point data could cause the relay to buffer forever
-		if err == nil && resp.StatusCode/100 != 5 {
-			return resp, err
-		}
-		atomic.StoreInt32(&r.buffering, 1)
-	}
-
-	// already buffering or failed request
 	batch, err := r.list.add(buf, query, auth)
 	if err != nil {
 		return nil, err
@@ -82,7 +69,6 @@ func (r *retryBuffer) run() {
 			resp, err := r.p.post(buf.Bytes(), batch.query, batch.auth)
 			if err == nil && resp.StatusCode/100 != 5 {
 				batch.resp = resp
-				atomic.StoreInt32(&r.buffering, 0)
 				batch.wg.Done()
 				break
 			}
@@ -195,6 +181,6 @@ func (l *bufferList) add(buf []byte, query string, auth string) (*batch, error) 
 		b.bufs = append(b.bufs, buf)
 	}
 
-	l.cond.L.Unlock()
+	defer l.cond.L.Unlock()
 	return *cur, nil
 }
