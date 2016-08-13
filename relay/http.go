@@ -374,7 +374,7 @@ func getBuf() *bytes.Buffer {
 	if bb, ok := bufPool.Get().(*bytes.Buffer); ok {
 		return bb
 	}
-	return new(bytes.Buffer)
+	return bufPool.New().(*bytes.Buffer)
 }
 
 func putBuf(b *bytes.Buffer) {
