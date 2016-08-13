@@ -223,6 +223,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	go func() {
 		wg.Wait()
+		close(responses)
 		putBuf(outBuf)
 	}()
 
