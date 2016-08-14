@@ -45,12 +45,18 @@ func newRetryBuffer(size, batch int, max time.Duration, p poster) *retryBuffer {
 }
 
 func (r *retryBuffer) post(buf []byte, query string, auth string) (*responseData, error) {
-	buf1 := make([]byte, len(buf))
-	copy(buf1, buf)
-	_, err := r.list.add(buf1, query, auth)
+	pb := getBuf()
+	pb.Write(buf)
+	batch, err := r.list.add(pb.Bytes(), query, auth)
 	if err != nil {
+		putBuf(pb)
 		return nil, err
 	}
+
+	go func() {
+		batch.wg.Wait()
+		putBuf(pb)
+	}()
 
 	return &responseData{
 		StatusCode: 204,
@@ -72,6 +78,7 @@ func (r *retryBuffer) run() {
 			resp, err := r.p.post(buf.Bytes(), batch.query, batch.auth)
 			if err == nil && resp.StatusCode/100 != 5 {
 				batch.resp = resp
+				batch.wg.Done()
 				break
 			}
 
@@ -94,6 +101,7 @@ type batch struct {
 	size  int
 	full  bool
 
+	wg   sync.WaitGroup
 	resp *responseData
 
 	next *batch
@@ -105,6 +113,7 @@ func newBatch(buf []byte, query string, auth string) *batch {
 	b.size = len(buf)
 	b.query = query
 	b.auth = auth
+	b.wg.Add(1)
 	return b
 }
 
