@@ -114,9 +114,9 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
 	if r.URL.Path == "/ping" && (r.Method == "GET" || r.Method == "HEAD") {
-			w.Header().Add("X-InfluxDB-Version", "relay")
-			w.WriteHeader(http.StatusNoContent)
-			return
+		w.Header().Add("X-InfluxDB-Version", "relay")
+		w.WriteHeader(http.StatusNoContent)
+		return
 	}
 
 	if r.URL.Path != "/write" {
@@ -209,7 +209,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		b := b
 		go func() {
 			defer wg.Done()
-			resp, err := b.post(outBytes, query, authHeader)
+			resp, err := b.write(outBytes, query, authHeader)
 			if err != nil {
 				log.Printf("Problem posting to relay %q backend %q: %v", h.Name(), b.name, err)
 			} else {
@@ -285,8 +285,8 @@ func jsonError(w http.ResponseWriter, code int, message string) {
 	w.Write([]byte(data))
 }
 
-type poster interface {
-	post([]byte, string, string) (*responseData, error)
+type writer interface {
+	write([]byte, string, string) (*responseData, error)
 }
 
 type simplePoster struct {
@@ -312,8 +312,8 @@ func newSimplePoster(location string, timeout time.Duration, skipTLSVerification
 	}
 }
 
-func (b *simplePoster) post(buf []byte, query string, auth string) (*responseData, error) {
-	req, err := http.NewRequest("POST", b.location, bytes.NewReader(buf))
+func (b *simplePoster) write(buf []byte, query string, auth string) (*responseData, error) {
+	req, err := http.NewRequest("POST", b.location+"/write", bytes.NewReader(buf))
 	if err != nil {
 		return nil, err
 	}
@@ -348,7 +348,7 @@ func (b *simplePoster) post(buf []byte, query string, auth string) (*responseDat
 }
 
 type httpBackend struct {
-	poster
+	writer
 	name string
 }
 
@@ -366,7 +366,7 @@ func newHTTPBackend(cfg *HTTPOutputConfig) (*httpBackend, error) {
 		timeout = t
 	}
 
-	var p poster = newSimplePoster(cfg.Location, timeout, cfg.SkipTLSVerification)
+	var p writer = newSimplePoster(cfg.Location, timeout, cfg.SkipTLSVerification)
 
 	// If configured, create a retryBuffer per backend.
 	// This way we serialize retries against each backend.
@@ -389,7 +389,7 @@ func newHTTPBackend(cfg *HTTPOutputConfig) (*httpBackend, error) {
 	}
 
 	return &httpBackend{
-		poster: p,
+		writer: p,
 		name:   cfg.Name,
 	}, nil
 }

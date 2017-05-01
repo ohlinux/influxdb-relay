@@ -27,10 +27,10 @@ type retryBuffer struct {
 
 	list *bufferList
 
-	p poster
+	p writer
 }
 
-func newRetryBuffer(size, batch int, max time.Duration, p poster) *retryBuffer {
+func newRetryBuffer(size, batch int, max time.Duration, p writer) *retryBuffer {
 	r := &retryBuffer{
 		initialInterval: retryInitial,
 		multiplier:      retryMultiplier,
@@ -44,7 +44,7 @@ func newRetryBuffer(size, batch int, max time.Duration, p poster) *retryBuffer {
 	return r
 }
 
-func (r *retryBuffer) post(buf []byte, query string, auth string) (*responseData, error) {
+func (r *retryBuffer) write(buf []byte, query string, auth string) (*responseData, error) {
 	buf1 := make([]byte, len(buf))
 	copy(buf1, buf)
 	_, err := r.list.add(buf1, query, auth)
@@ -69,7 +69,7 @@ func (r *retryBuffer) run() {
 
 		interval := r.initialInterval
 		for {
-			resp, err := r.p.post(buf.Bytes(), batch.query, batch.auth)
+			resp, err := r.p.write(buf.Bytes(), batch.query, batch.auth)
 			if err == nil && resp.StatusCode/100 != 5 {
 				batch.resp = resp
 				break
